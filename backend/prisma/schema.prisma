@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum BookingType {
+  FLIGHT
+  HOTEL
+}
+
+enum PaymentStatus {
+  INITIATED
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  name         String
+  phone        String?
+  homeAirport  String?
+  passwordHash String
+  createdAt    DateTime    @default(now())
+  bookings     Booking[]
+  passengers   Passenger[]
+  reviews      Review[]
+  drafts       BookingDraft[]
+  agentAuthorizationCodes AgentAuthorizationCode[]
+  agentRefreshSessions AgentRefreshSession[]
+}
+
+model AgentAuthorizationCode {
+  id String @id @default(cuid())
+  codeHash String @unique
+  userId String
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  clientId String
+  redirectUri String
+  codeChallenge String
+  scopes String[] @default([])
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId,expiresAt])
+}
+
+model AgentRefreshSession {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  userId String
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  clientId String
+  scopes String[] @default([])
+  expiresAt DateTime
+  revokedAt DateTime?
+  replacedByHash String?
+  createdAt DateTime @default(now())
+  @@index([userId,clientId,expiresAt])
+}
+
+model Airport {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  city         String
+  state        String
+  origins      Flight[] @relation("Origin")
+  destinations Flight[] @relation("Destination")
+}
+
+model Airline {
+  id      String   @id @default(cuid())
+  code    String   @unique
+  name    String
+  flights Flight[]
+}
+
+model Flight {
+  id             String      @id @default(cuid())
+  airlineId      String
+  airline        Airline     @relation(fields: [airlineId], references: [id])
+  originId       String
+  origin         Airport     @relation("Origin", fields: [originId], references: [id])
+  destinationId  String
+  destination    Airport     @relation("Destination", fields: [destinationId], references: [id])
+  departure      DateTime
+  arrival        DateTime
+  durationMins   Int
+  price          Int
+  currency       String      @default("INR")
+  cabin          String      @default("ECONOMY")
+  seats          FlightSeat[]
+
+  @@index([originId, destinationId, departure])
+}
+
+model FlightSeat {
+  id         String  @id @default(cuid())
+  flightId   String
+  flight     Flight  @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  seatNumber String
+  cabinClass String  @default("ECONOMY")
+  price      Int
+  available  Boolean @default(true)
+  bookingItemId String?
+  bookingItem BookingItem? @relation(fields: [bookingItemId], references: [id], onDelete: SetNull)
+
+  @@unique([flightId, seatNumber])
+  @@index([bookingItemId])
+}
+
+model Hotel {
+  id          String      @id @default(cuid())
+  name        String
+  city        String
+  address     String
+  rating      Float
+  description String
+  rooms       HotelRoom[]
+  reviews     Review[]
+}
+
+model HotelRoom {
+  id                 String  @id @default(cuid())
+  hotelId            String
+  hotel              Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  name               String
+  capacity           Int
+  units              Int     @default(1)
+  pricePerNight      Int
+  amenities          String[]
+  available          Boolean @default(true)
+  cancellationPolicy String
+  reservations HotelRoomReservation[]
+}
+
+model Passenger {
+  id         String        @id @default(cuid())
+  userId     String?
+  user       User?         @relation(fields: [userId], references: [id])
+  firstName  String
+  lastName   String
+  email      String
+  phone      String
+  bookings   BookingItem[]
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  bookingCode    String        @unique
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  status         BookingStatus @default(PENDING)
+  totalAmount    Int
+  currency       String        @default("INR")
+  idempotencyKey String        @unique
+  requestHash String @default("")
+  createdAt      DateTime      @default(now())
+  confirmedAt    DateTime?
+  items          BookingItem[]
+  payment        Payment?
+
+  @@index([userId, createdAt])
+}
+
+model BookingItem {
+  id          String      @id @default(cuid())
+  bookingId   String
+  booking     Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  type        BookingType
+  referenceId String
+  description String
+  amount      Int
+  details     Json?
+  passengers  Passenger[]
+  flightSeats FlightSeat[]
+  hotelReservation HotelRoomReservation?
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  bookingId String        @unique
+  booking   Booking       @relation(fields: [bookingId], references: [id])
+  status    PaymentStatus @default(INITIATED)
+  provider  String        @default("DEMO")
+  amount    Int
+  currency  String        @default("INR")
+  createdAt DateTime      @default(now())
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  hotelId   String?
+  hotel     Hotel?   @relation(fields: [hotelId], references: [id])
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+}
+
+model HotelRoomReservation {
+  id String @id @default(cuid())
+  hotelRoomId String
+  hotelRoom HotelRoom @relation(fields:[hotelRoomId],references:[id],onDelete:Restrict)
+  bookingItemId String @unique
+  bookingItem BookingItem @relation(fields:[bookingItemId],references:[id],onDelete:Cascade)
+  checkIn DateTime
+  checkOut DateTime
+  status String @default("CONFIRMED")
+  createdAt DateTime @default(now())
+  @@index([hotelRoomId,checkIn,checkOut,status])
+}
+
+model BookingDraft {
+  id String @id @default(cuid())
+  userId String @unique
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  payload Json
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  @@index([expiresAt])
+}

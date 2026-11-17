@@ -1,0 +1,2 @@
+import {describe,it,expect} from 'vitest';import {render,screen} from '@testing-library/react';import {MemoryRouter} from 'react-router-dom';import App from './App';
+describe('TravelEase',()=>{it('renders the home experience and both search modes',()=>{render(<MemoryRouter><App/></MemoryRouter>);expect(screen.getByRole('heading',{name:/go somewhere/i})).toBeInTheDocument();expect(screen.getByRole('button',{name:/flights/i})).toBeInTheDocument();expect(screen.getByRole('button',{name:/hotels/i})).toBeInTheDocument()})});
